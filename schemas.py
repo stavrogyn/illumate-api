@@ -19,6 +19,32 @@ class TenantRead(BaseModel):
         from_attributes = True
 
 
+# ----- Authentication -----
+class AuthRegister(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    tenant_name: str = Field(max_length=120)
+    role: str = Field(example="therapist")
+    locale: str = "en"
+
+
+class AuthLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class AuthResponse(BaseModel):
+    message: str
+    user_id: UUID
+    email: str
+    role: str
+    tenant_id: UUID
+
+
+class EmailVerification(BaseModel):
+    token: str
+
+
 # ----- User -----
 class UserCreate(BaseModel):
     email: EmailStr
@@ -31,6 +57,7 @@ class UserRead(BaseModel):
     email: EmailStr
     role: str
     locale: str
+    is_verified: bool
     created_at: datetime
 
     class Config:

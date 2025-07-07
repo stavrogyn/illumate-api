@@ -1,10 +1,14 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from uuid import UUID
-import models, schemas, crud
+from datetime import timedelta
+import models, schemas, crud, auth_service
 from database import engine, get_db
+from database_factory import DatabaseFactory
+from database_interface import DatabaseInterface
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -14,6 +18,7 @@ app = FastAPI(
     description="API для управления терапевтической практикой с поддержкой ИИ",
     version="1.0.0",
     openapi_tags=[
+        {"name": "auth", "description": "Аутентификация и авторизация"},
         {"name": "tenants", "description": "Управление организациями"},
         {"name": "users", "description": "Управление пользователями"},
         {"name": "clients", "description": "Управление клиентами"},
@@ -32,6 +37,163 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Security
+security = HTTPBearer(auto_error=False)
+
+
+def get_database(db_session: Session = Depends(get_db)) -> DatabaseInterface:
+    """Dependency для получения базы данных (реальной или мок)"""
+    return DatabaseFactory.create_database(db_session)
+
+
+def get_current_user(token: Optional[str] = Depends(security), database: DatabaseInterface = Depends(get_database)):
+    """Получает текущего пользователя из токена"""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    # Проверяем, что токен передан
+    if not token or not token.credentials:
+        raise credentials_exception
+    
+    payload = auth_service.verify_token(token.credentials)
+    if payload is None:
+        raise credentials_exception
+    
+    user_id: str = payload.get("sub")
+    if user_id is None:
+        raise credentials_exception
+    
+    user = database.get_user(UUID(user_id))
+    if user is None:
+        raise credentials_exception
+    
+    return user
+
+
+# Authentication endpoints
+@app.post("/auth/register", response_model=schemas.AuthResponse, status_code=status.HTTP_201_CREATED, tags=["auth"])
+def register(auth_data: schemas.AuthRegister, database: DatabaseInterface = Depends(get_database)):
+    """Регистрирует нового пользователя"""
+    # Проверяем, что email не занят
+    existing_user = database.get_user_by_email(auth_data.email)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Создаем tenant
+    tenant = database.create_tenant({"name": auth_data.tenant_name})
+    
+    # Создаем пользователя
+    password_hash = auth_service.get_password_hash(auth_data.password)
+    verification_token = auth_service.generate_verification_token()
+    
+    user_data = {
+        "email": auth_data.email,
+        "password_hash": password_hash,
+        "tenant_id": tenant["id"],
+        "role": auth_data.role,
+        "locale": auth_data.locale,
+        "is_verified": False,
+        "verification_token": verification_token
+    }
+    
+    user = database.create_user(user_data)
+    
+    # Отправляем email для подтверждения
+    auth_service.send_verification_email(auth_data.email, verification_token, auth_data.tenant_name)
+    
+    return schemas.AuthResponse(
+        message="User registered successfully. Please check your email for verification.",
+        user_id=user["id"],
+        email=user["email"],
+        role=user["role"],
+        tenant_id=user["tenant_id"]
+    )
+
+
+@app.post("/auth/login", response_model=schemas.AuthResponse, tags=["auth"])
+def login(auth_data: schemas.AuthLogin, response: Response, database: DatabaseInterface = Depends(get_database)):
+    """Вход пользователя"""
+    # Получаем пользователя
+    user = database.get_user_by_email(auth_data.email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password"
+        )
+    
+    # Проверяем пароль
+    if not auth_service.verify_password(auth_data.password, user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password"
+        )
+    
+    # Проверяем, что email подтвержден
+    if not user["is_verified"]:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email not verified. Please check your email and verify your account."
+        )
+    
+    # Создаем JWT токен
+    access_token_expires = timedelta(minutes=auth_service.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = auth_service.create_access_token(
+        data={"sub": str(user["id"])}, expires_delta=access_token_expires
+    )
+    
+    # Устанавливаем http-only cookie
+    response.set_cookie(
+        key="session_token",
+        value=access_token,
+        httponly=True,
+        secure=False,  # Set to True in production with HTTPS
+        samesite="lax",
+        max_age=1800  # 30 minutes
+    )
+    
+    return schemas.AuthResponse(
+        message="Login successful",
+        user_id=user["id"],
+        email=user["email"],
+        role=user["role"],
+        tenant_id=user["tenant_id"]
+    )
+
+
+@app.get("/auth/verify", tags=["auth"])
+def verify_email(token: str, database: DatabaseInterface = Depends(get_database)):
+    """Подтверждает email пользователя"""
+    user = database.get_user_by_verification_token(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token"
+        )
+    
+    # Обновляем статус пользователя
+    database.update_user_verification(user["id"], True, None)
+    
+    return {"message": "Email verified successfully"}
+
+
+@app.post("/auth/logout", tags=["auth"])
+def logout(response: Response):
+    """Выход пользователя"""
+    response.delete_cookie(key="session_token")
+    return {"message": "Logged out successfully"}
+
+
+@app.get("/auth/me", response_model=schemas.UserRead, tags=["auth"])
+def get_current_user_info(current_user: dict = Depends(get_current_user)):
+    """Получает информацию о текущем пользователе"""
+    return current_user
 
 
 @app.get("/")
@@ -69,7 +231,7 @@ def read_tenant(tenant_id: UUID, db: Session = Depends(get_db)):
 
 # User endpoints
 @app.post("/users/", response_model=schemas.UserRead, status_code=status.HTTP_201_CREATED, tags=["users"])
-def create_user(user: schemas.UserCreate, tenant_id: UUID, db: Session = Depends(get_db)):
+def create_user(user: schemas.UserCreate, tenant_id: UUID, password: str, db: Session = Depends(get_db)):
     # Verify that the tenant exists
     db_tenant = crud.get_tenant(db, tenant_id=tenant_id)
     if not db_tenant:
@@ -85,7 +247,7 @@ def create_user(user: schemas.UserCreate, tenant_id: UUID, db: Session = Depends
             detail="Email already registered"
         )
     
-    return crud.create_user(db=db, user=user, tenant_id=tenant_id)
+    return crud.create_user_with_password(db=db, user=user, tenant_id=tenant_id, password=password)
 
 
 @app.get("/users/", response_model=List[schemas.UserRead], tags=["users"])

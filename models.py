@@ -30,8 +30,11 @@ class User(Base, TimestampMixin):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     tenant_id = Column(ForeignKey("tenants.id"), nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
     role = Column(Enum("therapist", "assistant", "owner", name="user_role"), nullable=False)
     locale = Column(String(8), default="en")
+    is_verified = Column(Boolean, default=False, nullable=False)
+    verification_token = Column(String, unique=True, nullable=True)
     tenant = relationship("Tenant", back_populates="users")
 
 

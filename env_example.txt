@@ -1,0 +1,12 @@
+# Database
+DATABASE_URL=postgresql://username:password@localhost/therapy_db
+
+# Security
+SECRET_KEY=your-secret-key-change-in-production
+
+# Email settings (optional - for email verification)
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+FROM_EMAIL=noreply@therapyapp.com 

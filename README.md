@@ -1,17 +1,18 @@
-# FastAPI with PostgreSQL
+# Therapy Management API
 
-A modern FastAPI application with PostgreSQL database integration, featuring user management and item tracking.
+Современное FastAPI приложение с интеграцией PostgreSQL для управления терапевтической практикой, включая аутентификацию пользователей, управление клиентами и сессиями.
 
 ## Features
 
-- **FastAPI**: Modern, fast web framework for building APIs
-- **PostgreSQL**: Robust relational database
-- **SQLAlchemy**: SQL toolkit and ORM
-- **Alembic**: Database migration tool
-- **Pydantic**: Data validation using Python type annotations
-- **Password Hashing**: Secure password storage with bcrypt
-- **CORS Support**: Cross-origin resource sharing enabled
-- **Auto-generated API Documentation**: Interactive docs at `/docs`
+- **FastAPI**: Современный, быстрый веб-фреймворк для создания API
+- **PostgreSQL**: Надежная реляционная база данных
+- **SQLAlchemy**: SQL toolkit и ORM
+- **Alembic**: Инструмент для миграций базы данных
+- **Pydantic**: Валидация данных с использованием Python type annotations
+- **Аутентификация**: JWT токены, хеширование паролей с bcrypt
+- **Подтверждение Email**: Отправка писем для подтверждения регистрации
+- **CORS Support**: Поддержка cross-origin resource sharing
+- **Auto-generated API Documentation**: Интерактивная документация на `/docs`
 
 ## Project Structure
 
@@ -23,12 +24,15 @@ fastapi/
 ├── models.py            # SQLAlchemy models
 ├── schemas.py           # Pydantic schemas for request/response
 ├── crud.py              # CRUD operations
+├── auth_service.py      # Authentication and email services
 ├── requirements.txt     # Python dependencies
 ├── alembic.ini         # Alembic configuration
 ├── alembic/            # Database migrations
 │   ├── env.py
 │   ├── script.py.mako
 │   └── versions/
+├── test_auth.py        # Authentication tests
+├── env_example.txt     # Environment variables example
 └── README.md           # This file
 ```
 
@@ -71,12 +75,21 @@ fastapi/
 
 5. **Configure environment variables**
 
-   Create a `.env` file in the project root:
+   Create a `.env` file in the project root (see `env_example.txt` for reference):
 
    ```env
+   # Database
    DATABASE_URL=postgresql://postgres:password@localhost:5432/fastapi_db
-   SECRET_KEY=your-secret-key-here-change-in-production
-   DEBUG=True
+
+   # Security
+   SECRET_KEY=your-secret-key-change-in-production
+
+   # Email settings (optional - for email verification)
+   SMTP_SERVER=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USERNAME=your-email@gmail.com
+   SMTP_PASSWORD=your-app-password
+   FROM_EMAIL=noreply@therapyapp.com
    ```
 
 6. **Run database migrations**
@@ -93,61 +106,105 @@ fastapi/
    ```
 
 2. **Access the application**
+
    - API: http://localhost:8000
    - Interactive API docs: http://localhost:8000/docs
    - Alternative API docs: http://localhost:8000/redoc
    - Health check: http://localhost:8000/health
 
+3. **Test authentication**
+   ```bash
+   python test_auth.py
+   ```
+
 ## API Endpoints
 
-### Users
+### Authentication
 
-- `POST /users/` - Create a new user
-- `GET /users/` - Get all users (with pagination)
-- `GET /users/{user_id}` - Get a specific user
-- `PUT /users/{user_id}` - Update a user
-- `DELETE /users/{user_id}` - Delete a user
+- `POST /auth/register` - Регистрация нового пользователя
+- `POST /auth/login` - Вход пользователя (возвращает http-only cookie)
+- `GET /auth/verify` - Подтверждение email по токену
+- `POST /auth/logout` - Выход пользователя
+- `GET /auth/me` - Получение информации о текущем пользователе
 
-### Items
+### Tenants (Организации)
 
-- `POST /items/` - Create a new item
-- `GET /items/` - Get all items (with pagination)
-- `GET /items/{item_id}` - Get a specific item
-- `PUT /items/{item_id}` - Update an item
-- `DELETE /items/{item_id}` - Delete an item
-- `GET /users/{user_id}/items/` - Get items owned by a specific user
+- `POST /tenants/` - Создание новой организации
+- `GET /tenants/` - Получение списка организаций
+- `GET /tenants/{tenant_id}` - Получение информации об организации
+
+### Users (Пользователи)
+
+- `POST /users/` - Создание нового пользователя (требует аутентификации)
+- `GET /users/` - Получение списка пользователей организации
+- `GET /users/{user_id}` - Получение информации о пользователе
+
+### Clients (Клиенты)
+
+- `POST /clients/` - Создание нового клиента
+- `GET /clients/` - Получение списка клиентов организации
+- `GET /clients/{client_id}` - Получение информации о клиенте
+- `PATCH /clients/{client_id}` - Обновление информации о клиенте
+- `DELETE /clients/{client_id}` - Удаление клиента
+
+### Sessions (Сессии)
+
+- `POST /sessions/` - Создание новой сессии
+- `GET /sessions/` - Получение списка сессий клиента
+- `GET /sessions/{session_id}` - Получение информации о сессии
+- `PATCH /sessions/{session_id}` - Обновление информации о сессии
+- `DELETE /sessions/{session_id}` - Удаление сессии
 
 ## Example Usage
 
-### Create a User
+### Регистрация пользователя
 
 ```bash
-curl -X POST "http://localhost:8000/users/" \
+curl -X POST "http://localhost:8000/auth/register" \
      -H "Content-Type: application/json" \
      -d '{
-       "email": "user@example.com",
-       "username": "testuser",
-       "full_name": "Test User",
+       "email": "therapist@example.com",
+       "password": "securepassword123",
+       "tenant_name": "Моя Терапевтическая Практика",
+       "role": "therapist",
+       "locale": "ru"
+     }'
+```
+
+### Вход пользователя
+
+```bash
+curl -X POST "http://localhost:8000/auth/login" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "email": "therapist@example.com",
        "password": "securepassword123"
      }'
 ```
 
-### Create an Item
+### Подтверждение email
 
 ```bash
-curl -X POST "http://localhost:8000/items/" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "title": "My First Item",
-       "description": "This is a test item",
-       "owner_id": 1
-     }'
+curl "http://localhost:8000/auth/verify?token=YOUR_VERIFICATION_TOKEN"
 ```
 
-### Get All Users
+### Получение информации о текущем пользователе
 
 ```bash
-curl "http://localhost:8000/users/"
+curl -X GET "http://localhost:8000/auth/me" \
+     -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Создание клиента
+
+```bash
+curl -X POST "http://localhost:8000/clients/" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "full_name": "Иван Иванов",
+       "birthday": "1990-01-01T00:00:00",
+       "tags": ["новый", "депрессия"]
+     }'
 ```
 
 ## Database Migrations

@@ -54,6 +54,21 @@ def create_user(db: Session, user: schemas.UserCreate, tenant_id: UUID) -> model
     return db_user
 
 
+def create_user_with_password(db: Session, user: schemas.UserCreate, tenant_id: UUID, password: str) -> models.User:
+    """Создает пользователя с хешированным паролем"""
+    password_hash = get_password_hash(password)
+    db_user = models.User(
+        **user.dict(),
+        tenant_id=tenant_id,
+        password_hash=password_hash,
+        is_verified=True  # Администратор создает пользователя как подтвержденного
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
 def delete_user(db: Session, user_id: int) -> bool:
     db_user = get_user(db, user_id)
     if not db_user:
