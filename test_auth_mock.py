@@ -133,10 +133,9 @@ def test_auth_flow():
         print(f"Users: {list(mock_db.users.keys())}")
         print(f"Email to user mapping: {mock_db.email_to_user}")
         
-        if len(mock_db.tenants) == 1 and len(mock_db.users) == 1:
-            print("✅ Данные корректно сохранены в мок-базе")
-        else:
-            print("❌ Ошибка в сохранении данных в мок-базе")
+        assert len(mock_db.tenants) == 1, f"Ожидался 1 tenant, найдено: {len(mock_db.tenants)}"
+        assert len(mock_db.users) == 1, f"Ожидался 1 user, найдено: {len(mock_db.users)}"
+        print("✅ Данные корректно сохранены в мок-базе")
     
     # Очищаем мок-базу после тестов
     mock_db.clear()
@@ -163,10 +162,8 @@ def test_multiple_runs():
             }
             
             response = client.post("/auth/register", json=register_data)
-            if response.status_code == 201:
-                print(f"  ✅ Регистрация {i + 1} успешна")
-            else:
-                print(f"  ❌ Ошибка регистрации {i + 1}: {response.text}")
+            assert response.status_code == 201, f"Ошибка регистрации {i + 1}: {response.text}"
+            print(f"  ✅ Регистрация {i + 1} успешна")
         
         print()
 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Response
+from fastapi import FastAPI, Depends, HTTPException, status, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from database import engine, get_db
 from database_factory import DatabaseFactory
 from database_interface import DatabaseInterface
 
+from email_service import email_service
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
@@ -47,19 +48,34 @@ def get_database(db_session: Session = Depends(get_db)) -> DatabaseInterface:
     return DatabaseFactory.create_database(db_session)
 
 
-def get_current_user(token: Optional[str] = Depends(security), database: DatabaseInterface = Depends(get_database)):
-    """Получает текущего пользователя из токена"""
+def get_token_from_cookie(request: Request) -> Optional[str]:
+    """Получает токен из cookie"""
+    return request.cookies.get("session_token")
+
+
+def get_current_user(
+    request: Request,
+    bearer_token: Optional[str] = Depends(security),
+    database: DatabaseInterface = Depends(get_database)
+):
+    """Получает текущего пользователя из токена (cookie или Bearer)"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    # Проверяем, что токен передан
-    if not token or not token.credentials:
+    # Пробуем получить токен из cookie или Bearer
+    token = None
+    if bearer_token and bearer_token.credentials:
+        token = bearer_token.credentials
+    else:
+        token = get_token_from_cookie(request)
+    
+    if not token:
         raise credentials_exception
     
-    payload = auth_service.verify_token(token.credentials)
+    payload = auth_service.verify_token(token)
     if payload is None:
         raise credentials_exception
     
@@ -106,7 +122,7 @@ def register(auth_data: schemas.AuthRegister, database: DatabaseInterface = Depe
     user = database.create_user(user_data)
     
     # Отправляем email для подтверждения
-    auth_service.send_verification_email(auth_data.email, verification_token, auth_data.tenant_name)
+    email_service.send_verification_email(auth_data.email, verification_token, auth_data.tenant_name)
     
     return schemas.AuthResponse(
         message="User registered successfully. Please check your email for verification.",
@@ -179,6 +195,11 @@ def verify_email(token: str, database: DatabaseInterface = Depends(get_database)
     
     # Обновляем статус пользователя
     database.update_user_verification(user["id"], True, None)
+    
+    # Отправляем приветственное письмо
+    tenant = database.get_tenant(user["tenant_id"])
+    if tenant:
+        email_service.send_welcome_email(user["email"], tenant["name"])
     
     return {"message": "Email verified successfully"}
 

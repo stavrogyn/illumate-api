@@ -4,9 +4,9 @@ DATABASE_URL=postgresql://username:password@localhost/therapy_db
 # Security
 SECRET_KEY=your-secret-key-change-in-production
 
-# Email settings (optional - for email verification)
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-FROM_EMAIL=noreply@therapyapp.com 
+# Email settings (AWS SES)
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your-access-key-id
+AWS_SECRET_ACCESS_KEY=your-secret-access-key
+SENDER_EMAIL=noreply@illumate.io
+BASE_URL=http://localhost:8000 

@@ -1,9 +1,6 @@
 import os
 import secrets
-import smtplib
 from datetime import datetime, timedelta
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from typing import Optional
 from uuid import UUID
 from passlib.context import CryptContext
@@ -12,6 +9,7 @@ from sqlalchemy.orm import Session
 import models
 import crud
 import schemas
+from email_service import email_service
 
 # Настройки безопасности
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
@@ -22,11 +20,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Настройки для отправки email
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@therapyapp.com")
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -65,42 +59,7 @@ def generate_verification_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def send_verification_email(email: str, token: str, tenant_name: str):
-    """Отправляет email для подтверждения"""
-    if not SMTP_USERNAME or not SMTP_PASSWORD:
-        print(f"Email verification would be sent to {email} with token: {token}")
-        return
-    
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = FROM_EMAIL
-        msg['To'] = email
-        msg['Subject'] = f"Подтверждение регистрации в {tenant_name}"
-        
-        body = f"""
-        Здравствуйте!
-        
-        Спасибо за регистрацию в {tenant_name}. Для подтверждения вашего email перейдите по ссылке:
-        
-        http://localhost:8000/auth/verify?token={token}
-        
-        Если вы не регистрировались в нашем сервисе, проигнорируйте это письмо.
-        
-        С уважением,
-        Команда {tenant_name}
-        """
-        
-        msg.attach(MIMEText(body, 'plain', 'utf-8'))
-        
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
-        server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        text = msg.as_string()
-        server.sendmail(FROM_EMAIL, email, text)
-        server.quit()
-        
-    except Exception as e:
-        print(f"Error sending email: {e}")
+
 
 
 def authenticate_user(db: Session, email: str, password: str) -> Optional[models.User]:
@@ -137,7 +96,7 @@ def register_user(db: Session, email: str, password: str, tenant_name: str, role
     db.refresh(user)
     
     # Отправляем email для подтверждения
-    send_verification_email(email, verification_token, tenant_name)
+    email_service.send_verification_email(email, verification_token, tenant_name, BASE_URL)
     
     return user
 
