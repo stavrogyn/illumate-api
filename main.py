@@ -204,6 +204,65 @@ def verify_email(token: str, database: DatabaseInterface = Depends(get_database)
     return {"message": "Email verified successfully"}
 
 
+@app.post("/auth/resend-verification", tags=["auth"])
+def resend_verification_email(
+    request_data: schemas.ResendVerificationEmail, 
+    database: DatabaseInterface = Depends(get_database)
+):
+    """Повторно отправляет письмо для подтверждения email"""
+    # Проверяем, что пользователь существует
+    user = database.get_user_by_email(request_data.email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Проверяем, что email еще не подтвержден
+    if user["is_verified"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email is already verified"
+        )
+    
+    # Генерируем новый verification token
+    new_verification_token = auth_service.generate_verification_token()
+    
+    # Обновляем пользователя с новым токеном
+    updated_user = database.update_user_verification(
+        user["id"], 
+        False, 
+        new_verification_token
+    )
+    
+    if not updated_user:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update verification token"
+        )
+    
+    # Отправляем новое письмо для подтверждения
+    tenant = database.get_tenant(user["tenant_id"])
+    tenant_name = tenant["name"] if tenant else "Our Service"
+    
+    email_sent = email_service.send_verification_email(
+        request_data.email, 
+        new_verification_token, 
+        tenant_name
+    )
+    
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send verification email"
+        )
+    
+    return {
+        "message": "Verification email sent successfully",
+        "email": request_data.email
+    }
+
+
 @app.post("/auth/logout", tags=["auth"])
 def logout(response: Response):
     """Выход пользователя"""

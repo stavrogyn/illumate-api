@@ -45,6 +45,10 @@ class EmailVerification(BaseModel):
     token: str
 
 
+class ResendVerificationEmail(BaseModel):
+    email: EmailStr
+
+
 # ----- User -----
 class UserCreate(BaseModel):
     email: EmailStr

@@ -3,16 +3,21 @@ import boto3
 from botocore.exceptions import ClientError
 from typing import Optional
 from fastapi import BackgroundTasks
-
+from config import settings
 
 class EmailService:
     """Сервис для отправки писем через AWS SES"""
     
     def __init__(self):
-        self.aws_region = os.getenv("AWS_REGION", "us-east-1")
-        self.aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
-        self.aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-        self.sender_email = os.getenv("SENDER_EMAIL", "noreply@illumate.io")
+        self.aws_region = settings.aws_region
+        self.aws_access_key_id = settings.aws_access_key_id
+        self.aws_secret_access_key = settings.aws_secret_access_key
+        self.sender_email = settings.sender_email
+
+        print(f"AWS_REGION: {self.aws_region}")
+        print(f"AWS_ACCESS_KEY_ID: {self.aws_access_key_id}")
+        print(f"AWS_SECRET_ACCESS_KEY: {self.aws_secret_access_key}")
+        print(f"SENDER_EMAIL: {self.sender_email}")
         
         # Инициализация SES клиента только если есть AWS credentials
         self.ses_client = None
