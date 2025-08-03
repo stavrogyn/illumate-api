@@ -16,24 +16,55 @@
 
 ## Project Structure
 
+# Структура проекта (Clean Architecture)
+
 ```
 fastapi/
-├── main.py              # FastAPI application entry point
-├── config.py            # Configuration settings
-├── database.py          # Database connection and session management
-├── models.py            # SQLAlchemy models
-├── schemas.py           # Pydantic schemas for request/response
-├── crud.py              # CRUD operations
-├── auth_service.py      # Authentication and email services
-├── requirements.txt     # Python dependencies
-├── alembic.ini         # Alembic configuration
-├── alembic/            # Database migrations
-│   ├── env.py
-│   ├── script.py.mako
-│   └── versions/
-├── test_auth.py        # Authentication tests
-├── env_example.txt     # Environment variables example
-└── README.md           # This file
+├── app/
+│   ├── main.py                # Точка входа FastAPI
+│   ├── config.py              # Конфигурация приложения
+│   ├── domain/                # Бизнес-логика (Domain Layer)
+│   │   ├── entities/          # Сущности (User, Tenant, Client и др.)
+│   │   ├── repositories/      # Абстракции репозиториев (интерфейсы)
+│   │   └── services/          # Бизнес-сервисы (auth_service и др.)
+│   ├── infrastructure/        # Инфраструктурный слой
+│   │   ├── database/          # Реализация работы с БД (PostgreSQL, mock)
+│   │   └── external/          # Внешние сервисы (email и др.)
+│   ├── application/           # Application Layer (Pydantic-схемы, use-cases)
+│   │   ├── schemas.py         # Pydantic-схемы
+│   │   └── use_cases/         # Use Cases (auth, user и др.)
+│   └── presentation/          # Presentation Layer (API, middleware)
+│       ├── api/               # FastAPI роутеры (auth.py, users.py и др.)
+│       └── middleware/        # Middleware
+├── scripts/                   # Скрипты для обслуживания и утилиты
+│   ├── delete_user.py
+│   ├── setup_db.py
+│   └── test_real_email.py
+├── tests/                     # Тесты
+│   ├── unit/                  # Unit-тесты
+│   ├── integration/           # Интеграционные тесты
+│   └── e2e/                   # End-to-end тесты
+├── alembic/                   # Миграции
+├── requirements.txt
+├── README.md
+└── start.sh
+```
+
+## Описание слоев
+
+- **Domain Layer**: бизнес-логика, сущности, интерфейсы репозиториев, сервисы без привязки к инфраструктуре.
+- **Infrastructure Layer**: реализация репозиториев, работа с БД, внешние сервисы (email, AWS и др.).
+- **Application Layer**: схемы, use-cases, зависимости, обработка данных между слоями.
+- **Presentation Layer**: FastAPI роутеры, middleware, обработка HTTP-запросов.
+- **scripts/**: вспомогательные скрипты для администрирования и тестирования.
+- **tests/**: все тесты, разделённые по типу.
+
+## Точка входа
+
+Запуск приложения:
+
+```bash
+make run
 ```
 
 ## Prerequisites
